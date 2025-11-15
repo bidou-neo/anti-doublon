@@ -58,65 +58,51 @@
       render();
     }));
 
-    function norm(s) {
-      return (s||'').toLowerCase()
-        .replace(/\(.*?\)|\[.*?\]/g,'')
-        .replace(/édition.*|collector.*|coffret.*/g,'')
-        .replace(/[^a-z0-9]+/g,' ')
-        .trim();
-    }
-
-    function matchMode(it) {
-      if (mode==='all') return true;
-      if (mode==='dvd') return (it.type||'').toUpperCase()==='DVD';
-      if (mode==='cd')  return (it.type||'').toUpperCase()==='CD';
-      if (mode==='sold') return it.sold==='✔';
-      return true;
-    }
-
-    function score(item, terms) {
-      if (terms.length===1 && /^\d+$/.test(terms[0])) {
-        if ((item.ean||'')===terms[0]) return 1000;
-      }
-      let s=0;
-      const tnorm=item.titleNorm||'';
-      for(const t of terms){
-        if (tnorm.includes(t)) s+=5;
-        if ((item.year||'')===t) s+=3;
-      }
-      if (s>0 && terms.includes(item.year||'')) s+=2;
-      if (s>0 && terms.some(t=>t.length>=4 && (item.ean||'').includes(t))) s+=2;
-      return s;
-    }
-
     function render() {
-      const raw = q.value.trim();
-      const terms = raw ? raw.toLowerCase().split(/\s+/).map(x=>x.trim()) : [];
-      let arr = DATA.filter(matchMode);
-      if (terms.length) {
-        arr = arr.map(it => [score(it, terms), it]).filter(x=>x[0]>0 || (terms.length===1 && (it=>it.ean===terms[0])(it=x[1])));
-        arr.sort((a,b)=>b[0]-a[0]); arr = arr.map(x=>x[1]);
-      } else {
-        arr = arr.slice(0,300);
+      const term = q.value.trim().toLowerCase();
+      let arr = DATA;
+      if (mode === 'dvd') arr = arr.filter(r => (r.type||'').toUpperCase().includes('DVD'));
+      if (mode === 'cd') arr = arr.filter(r => (r.type||'').toUpperCase().includes('CD'));
+      if (mode === 'sold') arr = arr.filter(r => r.sold === '✔');
+
+      if (term) {
+        arr = arr.filter(r => {
+          const hay = (r.ean + ' ' + r.title + ' ' + r.titleNorm + ' ' + r.year + ' ' + r.edition).toLowerCase();
+          return hay.includes(term);
+        });
       }
 
       res.innerHTML = '';
-      const exactEAN = (raw && /^\d+$/.test(raw)) ? raw : null;
+      arr.forEach(r => {
+        const row = document.createElement('div');
+        row.className = 'row';
+        const title = document.createElement('div');
+        title.className = 'title';
+        title.textContent = (r.title || '(sans titre)') + (r.year ? ' ('+r.year+')' : '');
+        const meta = document.createElement('div');
+        meta.className = 'muted';
+        meta.textContent = [r.ean, r.edition, r.type].filter(Boolean).join(' • ');
 
-      for (const it of arr) {
-        const isExact = exactEAN && it.ean===exactEAN;
-        const badge = isExact ? '<span class="badge ok">Doublon exact (EAN)</span>'
-                    : (terms.length ? '<span class="badge warn">Proche</span>' : '');
-        const sold = it.sold==='✔' ? '<span class="badge sold">VENDU</span>' : '';
-        const meta = [it.year, it.edition].filter(Boolean).join(' · ');
-        const ean = it.ean ? 'EAN '+it.ean : '';
-        res.insertAdjacentHTML('beforeend',
-          `<div class="row">
-             <div class="title">${it.title || '(titre manquant)'} ${badge} ${sold}</div>
-             <div class="muted">${[ean, meta].filter(Boolean).join(' - ')}</div>
-           </div>`);
-      }
-      count.textContent = (arr.length ? arr.length+' résultat(s)' : 'Aucun résultat');
+        const badges = document.createElement('div');
+        if (r.ean && EANS.has(r.ean)) {
+          const b = document.createElement('span');
+          b.className = 'badge ok';
+          b.textContent = 'EAN connu';
+          badges.appendChild(b);
+        }
+        if (r.sold === '✔') {
+          const b = document.createElement('span');
+          b.className = 'badge sold';
+          b.textContent = 'Déjà vendu';
+          badges.appendChild(b);
+        }
+
+        row.appendChild(title);
+        row.appendChild(meta);
+        row.appendChild(badges);
+        res.appendChild(row);
+      });
+      count.textContent = arr.length ? (arr.length+' résultat(s)') : 'Aucun résultat';
     }
     render();
 
@@ -127,7 +113,7 @@
     btnScan.addEventListener('click', async () => {
       if (!('BarcodeDetector' in window)) {
         alert("Le scan natif n'est pas supporté sur ce navigateur. Saisis l'EAN dans la barre de recherche.");
-            return;
+        return;
       }
       if (scanning) {
         scanning=false; if(stream) stream.getTracks().forEach(t=>t.stop()); preview.style.display='none'; return;

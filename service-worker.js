@@ -1,4 +1,4 @@
-const CACHE='anti-doublon-v1';
+const CACHE='anti-doublon-20251115090311';
     const ASSETS=['./','./index.html','./manifest.webmanifest'];
     self.addEventListener('install',e=>{
       e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS)));
